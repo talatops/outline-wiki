@@ -1,0 +1,18 @@
+# Environment variables
+docker.env
+
+# Volume data
+volumes/
+database-data/
+storage-data/
+
+# Logs
+*.log
+
+# Redis dump
+redis.conf/*.rdb
+redis.conf/dump.rdb
+
+# System Files
+.DS_Store
+Thumbs.db 
