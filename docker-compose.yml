@@ -8,8 +8,6 @@ services:
   outline:
     image: docker.getoutline.com/outlinewiki/outline:latest
     env_file: ./docker.env
-    environment:
-      FORCE_HTTPS: "true"
     ports:
       - "3000:3000"
     volumes:
