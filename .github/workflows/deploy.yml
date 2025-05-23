@@ -1,8 +1,6 @@
 name: Deploy to EC2
 
 env:
-  IMAGE_NAME: outline
-  CONTAINER_NAME: outline
   REMOTE_DIR: /home/ubuntu/outline
 
 on:
@@ -16,38 +14,15 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Set up environment
         run: |
           echo "${{ secrets.EC2_ENV }}" > docker.env
-
-      - name: Clean up unused Docker resources
-        run: docker system prune -af
-
-      - name: Build and tag Docker image
-        run: |
-          docker build -t ${{ env.IMAGE_NAME }}:latest .
-          docker images
-
-      - name: Verify image exists
-        run: |
-          if ! docker image inspect ${{ env.IMAGE_NAME }}:latest >/dev/null 2>&1; then
-            echo "Docker image not found"
-            exit 1
-          fi
-
-      - name: Save Docker image
-        run: |
-          docker save ${{ env.IMAGE_NAME }}:latest | gzip > ${{ env.IMAGE_NAME }}.tar.gz
-          ls -lh ${{ env.IMAGE_NAME }}.tar.gz
 
       - name: Setup SSH
         run: |
@@ -66,12 +41,11 @@ jobs:
 
       - name: Copy files to server
         run: |
-          scp -i ~/.ssh/id_rsa ${{ env.IMAGE_NAME }}.tar.gz ubuntu@${{ secrets.EC2_HOST }}:${{ env.REMOTE_DIR }}/
           scp -i ~/.ssh/id_rsa docker-compose.yml ubuntu@${{ secrets.EC2_HOST }}:${{ env.REMOTE_DIR }}/
           scp -i ~/.ssh/id_rsa docker.env ubuntu@${{ secrets.EC2_HOST }}:${{ env.REMOTE_DIR }}/
           scp -i ~/.ssh/id_rsa -r redis.conf ubuntu@${{ secrets.EC2_HOST }}:${{ env.REMOTE_DIR }}/
 
-      - name: Deploy with rollback
+      - name: Deploy with docker-compose
         run: |
           ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.EC2_HOST }} << 'ENDSSH'
           set -e
@@ -82,18 +56,9 @@ jobs:
           sudo usermod -aG docker ubuntu
           sudo chmod 666 /var/run/docker.sock
           
-          # Clean up existing containers and images
+          # Clean up existing containers
           docker-compose down -v || true
-          docker system prune -af || true
-          docker rmi ${{ env.IMAGE_NAME }}:latest || true
-
-          # Load new image
-          gunzip -c ${{ env.IMAGE_NAME }}.tar.gz | docker load
-          if ! docker image inspect ${{ env.IMAGE_NAME }}:latest >/dev/null 2>&1; then
-            echo "Failed to load Docker image"
-            exit 1
-          fi
-
+          
           # Ensure docker-compose is installed
           if ! command -v docker-compose &> /dev/null; then
             sudo apt-get update
@@ -120,6 +85,4 @@ jobs:
         if: always()
         run: |
           rm -f ~/.ssh/id_rsa
-          rm -f docker.env ${{ env.IMAGE_NAME }}.tar.gz
-          docker rmi ${{ env.IMAGE_NAME }}:latest || true
-          docker system prune -f 
+          rm -f docker.env 
