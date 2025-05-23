@@ -21,8 +21,6 @@ services:
   redis:
     image: redis
     env_file: ./docker.env
-    ports:
-      - "6379:6379"
     volumes:
       - ./redis.conf:/redis.conf
     command: ["redis-server", "/redis.conf"]
@@ -37,8 +35,6 @@ services:
   postgres:
     image: postgres
     env_file: ./docker.env
-    ports:
-      - "5432:5432"
     volumes:
       - database-data:/var/lib/postgresql/data
     healthcheck:
