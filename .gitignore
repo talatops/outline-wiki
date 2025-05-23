@@ -1,5 +1,4 @@
-# Environment variables
-docker.env
+# Environment variable
 
 # Volume data
 volumes/
@@ -16,3 +15,7 @@ redis.conf/dump.rdb
 # System Files
 .DS_Store
 Thumbs.db 
+
+# Docker
+docker.env
+*.tar.gz

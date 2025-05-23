@@ -1,0 +1,125 @@
+name: Deploy to EC2
+
+env:
+  IMAGE_NAME: outline
+  CONTAINER_NAME: outline
+  REMOTE_DIR: /home/ubuntu/outline
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '*.md'
+      - '.gitignore'
+      - 'docs/'
+      - 'README.md'
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up environment
+        run: |
+          echo "${{ secrets.EC2_ENV }}" > docker.env
+
+      - name: Clean up unused Docker resources
+        run: docker system prune -af
+
+      - name: Build and tag Docker image
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }}:latest .
+          docker images
+
+      - name: Verify image exists
+        run: |
+          if ! docker image inspect ${{ env.IMAGE_NAME }}:latest >/dev/null 2>&1; then
+            echo "Docker image not found"
+            exit 1
+          fi
+
+      - name: Save Docker image
+        run: |
+          docker save ${{ env.IMAGE_NAME }}:latest | gzip > ${{ env.IMAGE_NAME }}.tar.gz
+          ls -lh ${{ env.IMAGE_NAME }}.tar.gz
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Prepare remote directory
+        run: |
+          ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.EC2_HOST }} << 'ENDSSH'
+          sudo rm -rf ${{ env.REMOTE_DIR }}
+          sudo mkdir -p ${{ env.REMOTE_DIR }}
+          sudo chown -R ubuntu:ubuntu ${{ env.REMOTE_DIR }}
+          ENDSSH
+
+      - name: Copy files to server
+        run: |
+          scp -i ~/.ssh/id_rsa ${{ env.IMAGE_NAME }}.tar.gz ubuntu@${{ secrets.EC2_HOST }}:${{ env.REMOTE_DIR }}/
+          scp -i ~/.ssh/id_rsa docker-compose.yml ubuntu@${{ secrets.EC2_HOST }}:${{ env.REMOTE_DIR }}/
+          scp -i ~/.ssh/id_rsa docker.env ubuntu@${{ secrets.EC2_HOST }}:${{ env.REMOTE_DIR }}/
+          scp -i ~/.ssh/id_rsa -r redis.conf ubuntu@${{ secrets.EC2_HOST }}:${{ env.REMOTE_DIR }}/
+
+      - name: Deploy with rollback
+        run: |
+          ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.EC2_HOST }} << 'ENDSSH'
+          set -e
+          cd ${{ env.REMOTE_DIR }}
+          
+          # Setup docker permissions
+          sudo groupadd -f docker
+          sudo usermod -aG docker ubuntu
+          sudo chmod 666 /var/run/docker.sock
+          
+          # Clean up existing containers and images
+          docker-compose down -v || true
+          docker system prune -af || true
+          docker rmi ${{ env.IMAGE_NAME }}:latest || true
+
+          # Load new image
+          gunzip -c ${{ env.IMAGE_NAME }}.tar.gz | docker load
+          if ! docker image inspect ${{ env.IMAGE_NAME }}:latest >/dev/null 2>&1; then
+            echo "Failed to load Docker image"
+            exit 1
+          fi
+
+          # Ensure docker-compose is installed
+          if ! command -v docker-compose &> /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y docker-compose
+          fi
+
+          # Deploy with docker-compose
+          docker-compose up -d
+          
+          # Wait for containers to start
+          sleep 10
+          
+          # Verify deployment
+          if ! docker-compose ps | grep -q "Up"; then
+            echo "Deployment failed, containers are not running"
+            docker-compose logs
+            exit 1
+          fi
+          
+          echo "Deployment successful!"
+          ENDSSH
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f ~/.ssh/id_rsa
+          rm -f docker.env ${{ env.IMAGE_NAME }}.tar.gz
+          docker rmi ${{ env.IMAGE_NAME }}:latest || true
+          docker system prune -f 
