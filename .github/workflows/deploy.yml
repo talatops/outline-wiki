@@ -43,7 +43,6 @@ jobs:
         run: |
           scp -i ~/.ssh/id_rsa docker-compose.yml ubuntu@${{ secrets.EC2_HOST }}:${{ env.REMOTE_DIR }}/
           scp -i ~/.ssh/id_rsa docker.env ubuntu@${{ secrets.EC2_HOST }}:${{ env.REMOTE_DIR }}/
-          scp -i ~/.ssh/id_rsa -r redis.conf ubuntu@${{ secrets.EC2_HOST }}:${{ env.REMOTE_DIR }}/
 
       - name: Deploy with docker-compose
         run: |
@@ -65,6 +64,9 @@ jobs:
             sudo apt-get install -y docker-compose
           fi
 
+          # Create required directories
+          mkdir -p redis-data
+          
           # Deploy with docker-compose
           docker-compose up -d
           
