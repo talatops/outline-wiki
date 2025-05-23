@@ -42,14 +42,10 @@ services:
     volumes:
       - database-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-d", "outline", "-U", "user"]
+      test: ["CMD", "pg_isready", "-d", "${POSTGRES_DB}", "-U", "${POSTGRES_USER}"]
       interval: 30s
       timeout: 20s
       retries: 3
-    environment:
-      POSTGRES_USER: 'user'
-      POSTGRES_PASSWORD: 'pass'
-      POSTGRES_DB: 'outline'
     networks:
       - outline-network
 
