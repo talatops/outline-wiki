@@ -9,8 +9,7 @@ services:
     image: docker.getoutline.com/outlinewiki/outline:latest
     env_file: ./docker.env
     environment:
-      FORCE_HTTPS: "false"
-      NODE_TLS_REJECT_UNAUTHORIZED: "0"
+      FORCE_HTTPS: "true"
     ports:
       - "3000:3000"
     volumes:
