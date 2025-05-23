@@ -31,10 +31,10 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Prepare remote directory
+      - name: Prepare directories
         run: |
           ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.EC2_HOST }} << 'ENDSSH'
-          sudo rm -rf ${{ env.REMOTE_DIR }}
+          # Ensure directories exist
           sudo mkdir -p ${{ env.REMOTE_DIR }}
           sudo chown -R ubuntu:ubuntu ${{ env.REMOTE_DIR }}
           ENDSSH
@@ -44,42 +44,38 @@ jobs:
           scp -i ~/.ssh/id_rsa docker-compose.yml ubuntu@${{ secrets.EC2_HOST }}:${{ env.REMOTE_DIR }}/
           scp -i ~/.ssh/id_rsa docker.env ubuntu@${{ secrets.EC2_HOST }}:${{ env.REMOTE_DIR }}/
 
-      - name: Deploy with docker-compose
+      - name: Deploy
         run: |
           ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.EC2_HOST }} << 'ENDSSH'
           set -e
           cd ${{ env.REMOTE_DIR }}
-          
+
           # Setup docker permissions
           sudo groupadd -f docker
           sudo usermod -aG docker ubuntu
           sudo chmod 666 /var/run/docker.sock
-          
-          # Clean up existing containers
-          docker-compose down -v || true
-          
-          # Ensure docker-compose is installed
-          if ! command -v docker-compose &> /dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y docker-compose
-          fi
 
-          # Create required directories
-          mkdir -p redis-data
-          
-          # Deploy with docker-compose
+          # Pull images first to avoid downtime
+          echo "Pulling new images..."
+          docker-compose pull || { echo "Failed to pull images"; exit 1; }
+
+          # Stop existing containers
+          docker-compose down --remove-orphans
+
+          # Start new containers
+          echo "Starting new containers..."
           docker-compose up -d
-          
+
           # Wait for containers to start
-          sleep 10
-          
+          echo "Waiting for containers to start..."
+          sleep 15
+
           # Verify deployment
           if ! docker-compose ps | grep -q "Up"; then
-            echo "Deployment failed, containers are not running"
-            docker-compose logs
+            echo "Container verification failed!"
             exit 1
           fi
-          
+
           echo "Deployment successful!"
           ENDSSH
 
@@ -87,4 +83,4 @@ jobs:
         if: always()
         run: |
           rm -f ~/.ssh/id_rsa
-          rm -f docker.env 
+          rm -f docker.env
