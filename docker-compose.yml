@@ -1,4 +1,9 @@
 version: "3.2"
+
+networks:
+  outline-network:
+    driver: bridge
+
 services:
   outline:
     image: docker.getoutline.com/outlinewiki/outline:latest
@@ -10,6 +15,8 @@ services:
     depends_on:
       - postgres
       - redis
+    networks:
+      - outline-network
 
   redis:
     image: redis
@@ -24,6 +31,8 @@ services:
       interval: 10s
       timeout: 30s
       retries: 3
+    networks:
+      - outline-network
 
   postgres:
     image: postgres
@@ -41,6 +50,8 @@ services:
       POSTGRES_USER: 'user'
       POSTGRES_PASSWORD: 'pass'
       POSTGRES_DB: 'outline'
+    networks:
+      - outline-network
 
 volumes:
   storage-data:
