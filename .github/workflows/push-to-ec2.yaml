@@ -55,12 +55,16 @@ jobs:
           sudo usermod -aG docker ubuntu
           sudo chmod 666 /var/run/docker.sock
 
+          # Ensure data directory exists and has proper permissions
+          sudo mkdir -p /var/lib/outline/data
+          sudo chown -R ubuntu:ubuntu /var/lib/outline/data
+
           # Pull images first to avoid downtime
           echo "Pulling new images..."
           docker-compose pull || { echo "Failed to pull images"; exit 1; }
 
-          # Stop existing containers
-          docker-compose down --remove-orphans
+          # Stop existing containers without removing volumes
+          docker-compose down --remove-orphans --volumes=false
 
           # Start new containers
           echo "Starting new containers..."
